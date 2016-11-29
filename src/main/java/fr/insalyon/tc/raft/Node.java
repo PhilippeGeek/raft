@@ -1,6 +1,7 @@
 package fr.insalyon.tc.raft;
 
 import java.io.*;
+import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -65,7 +66,7 @@ public class Node {
     public Node() throws IOException{
         id = UUID.randomUUID().toString();
         state = State.FOLLOWER;
-        server = new ServerSocket();
+        server = new ServerSocket(0,50, InetAddress.getLocalHost());
         registerNode();
         listenNewSocketConnections();
         System.out.println("Started node on "+server.getInetAddress().getHostAddress()+":"+server.getLocalPort());
