@@ -4,6 +4,7 @@ import java.io.*;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Scanner;
@@ -63,13 +64,57 @@ public class Node {
      */
     private Action lastKnownAction;
 
+    private int time = 0;
+    private final int loopTime = (int) (Math.random()*150+150);
+
+    /**
+     * Construct a new Node to the system
+     * @throws IOException Can not create node due to a network issue
+     */
+    @SuppressWarnings("WeakerAccess")
     public Node() throws IOException{
         id = UUID.randomUUID().toString();
         state = State.FOLLOWER;
         server = new ServerSocket(0,50, InetAddress.getLocalHost());
         registerNode();
         listenNewSocketConnections();
+        startTimer();
         System.out.println("Started node on "+server.getInetAddress().getHostAddress()+":"+server.getLocalPort());
+    }
+
+    private void startTimer() {
+        new Thread(()->{
+            while (!server.isClosed()){
+                time++;
+                try {
+                    Thread.sleep(1);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException("Node Timer should never be halt!", e);
+                }
+                if(time>loopTime){
+                    // Act timer exceed
+                    Heartbeat heartbeat = new Heartbeat(this);
+                    otherNodes.forEach((node)->node.sendHeartbeat(heartbeat));
+                    // Reset the timer
+                    time = 0;
+                }
+            }
+        }).start();
+    }
+
+    private void sendHeartbeat(Heartbeat beat){
+        if(isClientNode()){
+            try {
+                System.out.println("Send beat!");
+                new ObjectOutputStream(socket.getOutputStream()).writeObject(beat);
+            } catch (SocketException e) {
+                if(e.getMessage().contains("Broken pipe")){
+                    state = State.DOWN;
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     private void listenNewSocketConnections() {
@@ -89,6 +134,7 @@ public class Node {
                                 new PrintStream(clientSocket.getOutputStream()).println(id);
                                 System.out.println("New node has come "+hello[1]);
                                 final Node node = new Node(hello[1], clientSocket);
+                                otherNodes.add(node);
                                 new Thread(node::listenNode).start();
                         }
                     }
@@ -101,12 +147,13 @@ public class Node {
     }
 
     private void listenNode() {
-        while (true){
+        while (getState() != State.DOWN){
             try {
                 final InputStream inputStream = socket.getInputStream();
                 final Object readObject = new ObjectInputStream(inputStream).readObject();
                 System.out.println("Receive object! "+readObject);
             } catch (IOException e) {
+                state = State.DOWN;
                 System.err.println("Error on socket connection");
                 e.printStackTrace(System.err);
             } catch (ClassNotFoundException e) {
@@ -127,7 +174,11 @@ public class Node {
             while (scanner.hasNext()){
                 final String host = scanner.nextLine();
                 if(host.contains(":") && !host.equals(getServerHost())){
-                    otherNodes.add(connectToNode(host));
+                    final Node node = connectToNode(host);
+                    if (node != null) {
+                        otherNodes.add(node);
+                        new Thread(node::listenNode).start();
+                    }
                 }
             }
         } catch (IOException e) {
@@ -164,7 +215,11 @@ public class Node {
         return id;
     }
 
+    public boolean isClientNode() {
+        return server == null;
+    }
+
     public enum State {
-        FOLLOWER, CANDIDATE, LEADER
+        FOLLOWER, CANDIDATE, DOWN, LEADER
     }
 }
