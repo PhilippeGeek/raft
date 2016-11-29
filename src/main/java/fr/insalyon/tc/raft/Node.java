@@ -151,6 +151,27 @@ public class Node {
             try {
                 final InputStream inputStream = socket.getInputStream();
                 final Object readObject = new ObjectInputStream(inputStream).readObject();
+                switch (readObject.getClass().getName()){
+                    case "Hearthbeat":
+                        time = 0;
+                        break;
+
+                    case "Vote":
+                        Vote v = (Vote) readObject;
+
+                        // Manage Vote process
+                        boolean hasAlreadyCandidate = false;
+                        for (Node node : otherNodes) {
+                            if(node.getState() == State.CANDIDATE) {
+                                hasAlreadyCandidate = true;
+                                break;
+                            }
+                        }
+
+                        break;
+
+
+                }
                 System.out.println("Receive object! "+readObject);
             } catch (IOException e) {
                 state = State.DOWN;
