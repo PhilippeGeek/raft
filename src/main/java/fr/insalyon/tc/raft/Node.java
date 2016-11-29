@@ -137,7 +137,7 @@ public class Node {
     private Node connectToNode(String host) {
         try{
             final Socket socket = new Socket(host.split(":")[0], Integer.parseInt(host.split(":")[1]));
-            new PrintStream(socket.getOutputStream()).println("client "+id);
+            new PrintStream(socket.getOutputStream()).println("node "+id);
             String nodeId = new Scanner(socket.getInputStream()).nextLine();
             return new Node(nodeId, socket);
         } catch (IOException e) {
