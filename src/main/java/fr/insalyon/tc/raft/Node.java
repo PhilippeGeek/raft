@@ -1,9 +1,6 @@
 package fr.insalyon.tc.raft;
 
-import java.io.IOError;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.ArrayList;
@@ -15,6 +12,9 @@ import java.util.UUID;
  * Represent a node of the system.
  */
 public class Node {
+
+    private static final int MASTER_SERVER_PORT = 4242;
+    private static final String MASTER_SERVER_URL = "localhost";
 
     /**
      * Identifier for that node
@@ -66,7 +66,12 @@ public class Node {
         id = UUID.randomUUID().toString();
         state = State.FOLLOWER;
         server = new ServerSocket();
+        registerNode();
+        listenNewSocketConnections();
         System.out.println("Started node on "+server.getInetAddress().getHostAddress()+":"+server.getLocalPort());
+    }
+
+    private void listenNewSocketConnections() {
         new Thread(() -> {
             //noinspection InfiniteLoopStatement
             while (true){
@@ -80,6 +85,7 @@ public class Node {
                             case "client":
                                 break;
                             case "node":
+                                new PrintStream(clientSocket.getOutputStream()).println(id);
                                 System.out.println("New node has come "+hello[1]);
                                 final Node node = new Node(hello[1], clientSocket);
                                 new Thread(node::listenNode).start();
@@ -110,6 +116,38 @@ public class Node {
                 return;
             }
         }
+    }
+
+    private void registerNode(){
+        try {
+            Socket s = new Socket(Node.MASTER_SERVER_URL, Node.MASTER_SERVER_PORT);
+            new PrintStream(s.getOutputStream()).println(getServerHost());
+            final Scanner scanner = new Scanner(s.getInputStream());
+            while (scanner.hasNext()){
+                final String host = scanner.nextLine();
+                if(host.contains(":") && !host.equals(getServerHost())){
+                    otherNodes.add(connectToNode(host));
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private Node connectToNode(String host) {
+        try{
+            final Socket socket = new Socket(host.split(":")[0], Integer.parseInt(host.split(":")[1]));
+            new PrintStream(socket.getOutputStream()).println("client "+id);
+            String nodeId = new Scanner(socket.getInputStream()).nextLine();
+            return new Node(nodeId, socket);
+        } catch (IOException e) {
+            System.err.println("Failed to connect to host " + host);
+        }
+        return null;
+    }
+
+    public String getServerHost() {
+        return server.getInetAddress().getHostAddress()+":"+server.getLocalPort();
     }
 
     private Node(String id, Socket socket){
